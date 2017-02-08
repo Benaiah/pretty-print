@@ -146,6 +146,10 @@ func Fprint(dest io.Writer, jsonInput []byte, settings Settings) error {
 	// The decoder will decode the tokens one by one.
 	dec := json.NewDecoder(bytes.NewReader(jsonInput))
 
+	// We need to encode strings so they're escaped properly
+	encodingBuffer := &bytes.Buffer{}
+	enc := json.NewEncoder(encodingBuffer)
+
 	indentLevel := 0
 	isNextStringKey := true
 
@@ -201,12 +205,17 @@ func Fprint(dest io.Writer, jsonInput []byte, settings Settings) error {
 			}
 
 		case string:
+			strVal := fmt.Sprint(t)
+			enc.Encode(strVal)
+			str := strings.TrimSpace(encodingBuffer.String())
+			encodingBuffer.Reset()
+
 			if isNextStringKey {
-				writer.Fprint("key", line, t)
+				writer.Fprint("key", line, str)
 				fmt.Fprint(line, ": ")
 				isNextStringKey = false
 			} else {
-				writer.Fprint("string", line, t)
+				writer.Fprint("string", line, str)
 				fmt.Fprint(line, ",")
 				isNextStringKey = !inArrayStack.peek()
 
