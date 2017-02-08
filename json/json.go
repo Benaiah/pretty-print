@@ -45,14 +45,9 @@ var DefaultColors = Colors{
 }
 
 var DefaultSettings = Settings{
-	Indent:       true,
 	Highlight:    true,
 	IndentAmount: 2,
 	Colors:       DefaultColors,
-}
-
-func newline(dest io.Writer, indentLevel int) {
-	fmt.Fprint(dest, "\n")
 }
 
 func writeline(dest io.Writer, line *bytes.Buffer, indentLevel int) {
