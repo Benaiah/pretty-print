@@ -111,24 +111,45 @@ func (s *boolStack) len() int {
 	return len(s.s)
 }
 
-func Fprint(dest io.Writer, jsonInput []byte, settings Settings) error {
-	// At the moment indentation and highlighting are all that the
-	// function does, so if those are set to false it's just a noop
-	if settings.Indent == false && settings.Highlight == false {
-		return nil
-	}
+type colorWriter struct {
+	writers         map[string]*color.Color
+	shouldHighlight bool
+}
 
-	// The decoder will decode the tokens one by one.
-	dec := json.NewDecoder(bytes.NewReader(jsonInput))
-
+func newColorWriter(colors Colors, shouldHighlight bool) colorWriter {
 	// Create the color writers
 	writers := make(map[string]*color.Color)
 
-	writers["delim"] = color.New(settings.Colors.DelimBg, settings.Colors.DelimFg)
-	writers["key"] = color.New(settings.Colors.KeyBg, settings.Colors.KeyFg)
-	writers["bool"] = color.New(settings.Colors.BoolBg, settings.Colors.BoolFg)
-	writers["string"] = color.New(settings.Colors.StringBg, settings.Colors.StringFg)
-	writers["number"] = color.New(settings.Colors.NumberBg, settings.Colors.NumberFg)
+	writers["delim"] = color.New(colors.DelimBg, colors.DelimFg)
+	writers["key"] = color.New(colors.KeyBg, colors.KeyFg)
+	writers["bool"] = color.New(colors.BoolBg, colors.BoolFg)
+	writers["string"] = color.New(colors.StringBg, colors.StringFg)
+	writers["number"] = color.New(colors.NumberBg, colors.NumberFg)
+
+	return colorWriter{writers, shouldHighlight}
+}
+
+func (c *colorWriter) Fprintf(writer string, dest io.Writer, format string, v ...interface{}) {
+	if c.shouldHighlight {
+		c.writers[writer].Fprintf(dest, format, v...)
+	} else {
+		fmt.Fprintf(dest, format, v...)
+	}
+}
+
+func (c *colorWriter) Fprint(writer string, dest io.Writer, v interface{}) {
+	if c.shouldHighlight {
+		c.writers[writer].Fprint(dest, v)
+	} else {
+		fmt.Fprint(dest, v)
+	}
+}
+
+func Fprint(dest io.Writer, jsonInput []byte, settings Settings) error {
+	writer := newColorWriter(settings.Colors, settings.Highlight)
+
+	// The decoder will decode the tokens one by one.
+	dec := json.NewDecoder(bytes.NewReader(jsonInput))
 
 	indentLevel := 0
 	isNextStringKey := true
@@ -156,7 +177,7 @@ func Fprint(dest io.Writer, jsonInput []byte, settings Settings) error {
 
 			indentAfter := false
 
-			writers["delim"].Fprintf(line, "%v", t)
+			writer.Fprintf("delim", line, "%v", t)
 
 			switch stringToken {
 			case "{":
@@ -186,11 +207,11 @@ func Fprint(dest io.Writer, jsonInput []byte, settings Settings) error {
 
 		case string:
 			if isNextStringKey {
-				writers["key"].Fprintf(line, "\"%v\"", t)
+				writer.Fprint("key", line, t)
 				fmt.Fprint(line, ": ")
 				isNextStringKey = false
 			} else {
-				writers["string"].Fprintf(line, "\"%v\"", t)
+				writer.Fprint("string", line, t)
 				fmt.Fprint(line, ",")
 				isNextStringKey = !inArrayStack.peek()
 
@@ -198,14 +219,14 @@ func Fprint(dest io.Writer, jsonInput []byte, settings Settings) error {
 			}
 
 		case float64:
-			writers["number"].Fprint(line, t)
+			writer.Fprint("number", line, t)
 			fmt.Fprint(line, ",")
 			isNextStringKey = !inArrayStack.peek()
 
 			writeline(dest, line, indentLevel*settings.IndentAmount)
 
 		case bool:
-			writers["bool"].Fprint(line, t)
+			writer.Fprint("bool", line, t)
 			fmt.Fprint(line, ",")
 			isNextStringKey = !inArrayStack.peek()
 
